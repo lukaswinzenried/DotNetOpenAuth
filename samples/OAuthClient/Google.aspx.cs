@@ -24,7 +24,11 @@
 						IAuthorizationState authorization = await googleClient.ProcessUserAuthorizationAsync(new HttpRequestWrapper(Request), ct);
 						if (authorization == null) {
 							// Kick off authorization request
-							var request = await googleClient.PrepareRequestUserAuthorizationAsync(cancellationToken: ct);
+                            var request = await googleClient.PrepareRequestUserAuthorizationAsync(cancellationToken: ct, scopes: new[] {
+                                GoogleClient.Scopes.UserInfo.Profile, 
+                                GoogleClient.Scopes.UserInfo.Email,
+                                GoogleClient.Scopes.PlusMe
+                            });
 							await request.SendAsync(new HttpContextWrapper(Context), ct);
 							this.Context.Response.End();
 
