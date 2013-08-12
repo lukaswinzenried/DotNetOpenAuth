@@ -7,14 +7,20 @@
 namespace DotNetOpenAuth.OAuth2 {
 	using System;
 	using System.Collections.Generic;
+	using System.Collections.Specialized;
 	using System.Linq;
 	using System.Net.Http;
 	using System.Net.Http.Headers;
 	using System.Text;
 	using System.Threading;
 	using System.Threading.Tasks;
+	using System.Web;
 	using DotNetOpenAuth.Messaging;
 	using Validation;
+
+	public static class BearerTokenAssembler {
+		public delegate void CustomTokenAssemblerDelegate(HttpRequestMessage request, string bearerToken);
+	}
 
 	/// <summary>
 	/// An <see cref="HttpMessageHandler"/> that applies a bearer token to each outbound HTTP request.
@@ -25,10 +31,11 @@ namespace DotNetOpenAuth.OAuth2 {
 		/// </summary>
 		/// <param name="bearerToken">The bearer token.</param>
 		/// <param name="innerHandler">The inner handler.</param>
-		public BearerTokenHttpMessageHandler(string bearerToken, HttpMessageHandler innerHandler)
+		public BearerTokenHttpMessageHandler(string bearerToken, HttpMessageHandler innerHandler, BearerTokenAssembler.CustomTokenAssemblerDelegate tokenAssembler = null)
 			: base(innerHandler) {
 			Requires.NotNullOrEmpty(bearerToken, "bearerToken");
 			this.BearerToken = bearerToken;
+			this.CustomTokenAssembler = tokenAssembler;
 		}
 
 		/// <summary>
@@ -37,13 +44,16 @@ namespace DotNetOpenAuth.OAuth2 {
 		/// <param name="client">The client associated with the authorization.</param>
 		/// <param name="authorization">The authorization.</param>
 		/// <param name="innerHandler">The inner handler.</param>
-		public BearerTokenHttpMessageHandler(ClientBase client, IAuthorizationState authorization, HttpMessageHandler innerHandler)
+		public BearerTokenHttpMessageHandler(ClientBase client, IAuthorizationState authorization,
+											 HttpMessageHandler innerHandler, BearerTokenAssembler.CustomTokenAssemblerDelegate tokenAssembler = null)
 			: base(innerHandler) {
 			Requires.NotNull(client, "client");
 			Requires.NotNull(authorization, "authorization");
-			Requires.That(!string.IsNullOrEmpty(authorization.AccessToken), "authorization.AccessToken", "AccessToken must be non-empty");
+			Requires.That(!string.IsNullOrEmpty(authorization.AccessToken), "authorization.AccessToken",
+			              "AccessToken must be non-empty");
 			this.Client = client;
 			this.Authorization = authorization;
+			this.CustomTokenAssembler = tokenAssembler;
 		}
 
 		/// <summary>
@@ -53,6 +63,8 @@ namespace DotNetOpenAuth.OAuth2 {
 		/// The bearer token.
 		/// </value>
 		internal string BearerToken { get; private set; }
+
+		internal BearerTokenAssembler.CustomTokenAssemblerDelegate CustomTokenAssembler { get; set; }
 
 		/// <summary>
 		/// Gets the authorization.
@@ -64,6 +76,7 @@ namespace DotNetOpenAuth.OAuth2 {
 		/// </summary>
 		internal ClientBase Client { get; private set; }
 
+
 		/// <summary>
 		/// Sends an HTTP request to the inner handler to send to the server as an asynchronous operation.
 		/// </summary>
@@ -72,12 +85,17 @@ namespace DotNetOpenAuth.OAuth2 {
 		/// <returns>
 		/// Returns <see cref="T:System.Threading.Tasks.Task`1" />. The task object representing the asynchronous operation.
 		/// </returns>
-		protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
+		protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+		                                                             CancellationToken cancellationToken) {
 			string bearerToken = this.BearerToken;
 			if (bearerToken == null) {
-				ErrorUtilities.VerifyProtocol(!this.Authorization.AccessTokenExpirationUtc.HasValue || this.Authorization.AccessTokenExpirationUtc >= DateTime.UtcNow || this.Authorization.RefreshToken != null, ClientStrings.AuthorizationExpired);
+				ErrorUtilities.VerifyProtocol(
+					!this.Authorization.AccessTokenExpirationUtc.HasValue ||
+					this.Authorization.AccessTokenExpirationUtc >= DateTime.UtcNow || this.Authorization.RefreshToken != null,
+					ClientStrings.AuthorizationExpired);
 
-				if (this.Authorization.AccessTokenExpirationUtc.HasValue && this.Authorization.AccessTokenExpirationUtc.Value < DateTime.UtcNow) {
+				if (this.Authorization.AccessTokenExpirationUtc.HasValue &&
+				    this.Authorization.AccessTokenExpirationUtc.Value < DateTime.UtcNow) {
 					ErrorUtilities.VerifyProtocol(this.Authorization.RefreshToken != null, ClientStrings.AccessTokenRefreshFailed);
 					await this.Client.RefreshAuthorizationAsync(this.Authorization, cancellationToken: cancellationToken);
 				}
@@ -85,7 +103,11 @@ namespace DotNetOpenAuth.OAuth2 {
 				bearerToken = this.Authorization.AccessToken;
 			}
 
-			request.Headers.Authorization = new AuthenticationHeaderValue(Protocol.BearerHttpAuthorizationScheme, bearerToken);
+			if (CustomTokenAssembler == null)
+				request.Headers.Authorization = new AuthenticationHeaderValue(Protocol.BearerHttpAuthorizationScheme, bearerToken);
+			else {
+				CustomTokenAssembler(request, bearerToken);
+			}
 			return await base.SendAsync(request, cancellationToken);
 		}
 	}

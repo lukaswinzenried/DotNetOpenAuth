@@ -157,10 +157,12 @@ namespace DotNetOpenAuth.OAuth2 {
 		/// </summary>
 		/// <param name="bearerAccessToken">The bearer token to apply to each outbound HTTP message.</param>
 		/// <param name="innerHandler">The inner HTTP handler to use.  The default uses <see cref="HttpClientHandler"/> as the inner handler.</param>
+		/// <param name="customTokenAssembler">A custom token assembler to support clients like linkedIn</param>
 		/// <returns>An <see cref="HttpMessageHandler"/> instance.</returns>
-		public DelegatingHandler CreateAuthorizingHandler(string bearerAccessToken, HttpMessageHandler innerHandler = null) {
+		public DelegatingHandler CreateAuthorizingHandler(string bearerAccessToken, HttpMessageHandler innerHandler = null, 
+			BearerTokenAssembler.CustomTokenAssemblerDelegate customTokenAssembler = null) {
 			Requires.NotNullOrEmpty(bearerAccessToken, "bearerAccessToken");
-			return new BearerTokenHttpMessageHandler(bearerAccessToken, innerHandler ?? new HttpClientHandler());
+            return new BearerTokenHttpMessageHandler(bearerAccessToken, innerHandler ?? new HttpClientHandler(), customTokenAssembler);
 		}
 
 		/// <summary>
@@ -169,10 +171,13 @@ namespace DotNetOpenAuth.OAuth2 {
 		/// </summary>
 		/// <param name="authorization">The authorization to apply to the message.</param>
 		/// <param name="innerHandler">The inner HTTP handler to use.  The default uses <see cref="HttpClientHandler"/> as the inner handler.</param>
+		/// <param name="customTokenAssembler">A custom token assembler to support clients like linkedIn</param>
 		/// <returns>An <see cref="HttpMessageHandler"/> instance.</returns>
-		public DelegatingHandler CreateAuthorizingHandler(IAuthorizationState authorization, HttpMessageHandler innerHandler = null) {
+        public DelegatingHandler CreateAuthorizingHandler(IAuthorizationState authorization, HttpMessageHandler innerHandler = null,
+			BearerTokenAssembler.CustomTokenAssemblerDelegate customTokenAssembler = null)
+        {
 			Requires.NotNull(authorization, "authorization");
-			return new BearerTokenHttpMessageHandler(this, authorization, innerHandler ?? new HttpClientHandler());
+            return new BearerTokenHttpMessageHandler(this, authorization, innerHandler ?? new HttpClientHandler(), customTokenAssembler);
 		}
 
 		/// <summary>
